@@ -1,8 +1,10 @@
+#!/usr/bin/python3
 from argparse import ArgumentParser
 from sys import stdout, argv
 
 import dbus
 import json
+import pulsectl
 
 session_bus = dbus.SessionBus()
 
@@ -11,6 +13,7 @@ spotify_bus = session_bus.get_object(*bus_data)
 
 interface = dbus.Interface(spotify_bus, "org.freedesktop.DBus.Properties")
 metadata = interface.Get("org.mpris.MediaPlayer2.Player", "Metadata")
+status   = interface.Get("org.mpris.MediaPlayer2.Player", "PlaybackStatus")
 
 
 def main():
@@ -21,13 +24,15 @@ def main():
     parser.add_argument('--artist', action='store_true')
     parser.add_argument('--song', action='store_true')
     parser.add_argument('--album', action='store_true')
+    parser.add_argument('--volume', action='store_true')
+    parser.add_argument('--status', action='store_true')
     parser.add_argument('--format', default='str', choices=formats)
     parser.add_argument('--sep', default=' - ')
     parser.add_argument('--template')
 
     args = parser.parse_args()
 
-    data_flags = ('artist', 'song', 'album')
+    data_flags = ('status', 'artist', 'song', 'album', 'volume')
 
     opts = dict()
 
@@ -58,14 +63,26 @@ def main():
 
     data = dict()
 
+    if args.status:
+        if str(status) == 'Playing':
+            data['status'] = "\uf04c"
+        else:
+            data['status'] = "\uf04b"
+
     if args.artist:
-        data['artist'] = str(next(iter(metadata.get('xesam:albumArtist'))))
+        data['artist'] = str(next(iter(metadata.get('xesam:artist'))))
 
     if args.song:
         data['song'] = str(metadata.get('xesam:title'))
 
     if args.album:
         data['album'] = str(metadata.get('xesam:album'))
+
+    if args.volume:
+        pulse = pulsectl.Pulse('spotify-client')
+        spotify = pulse.sink_input_list()[0] # all the sinks are basically the same?
+        volume = round(spotify.volume.value_flat*100)
+        data['volume'] = '{0}%'.format(volume)
 
     formatters = {
         'json': lambda d: stdout.write(json.dumps(d)),
